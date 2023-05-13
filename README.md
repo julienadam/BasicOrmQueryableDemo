@@ -10,4 +10,4 @@ The project for the whole series can be found at https://github.com/mattwar/iqto
 
 This little project is intended for demo and learning  purposes.
 
-It is more or less the same code than what is available at the end of step 2 of the *Building anIQueryable provider* MSDN series, very slightly refactored.
+It is more or less the same code than what is available at the end of step 2 of the *Building an IQueryable provider* MSDN series, very slightly refactored.
