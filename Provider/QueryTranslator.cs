@@ -5,6 +5,7 @@ using System.Text;
 internal class QueryTranslator : ExpressionVisitor
 {
     private StringBuilder sb;
+    private int? top = null;
 
     internal QueryTranslator() { }
 
@@ -27,17 +28,29 @@ internal class QueryTranslator : ExpressionVisitor
 
     protected override Expression VisitMethodCall(MethodCallExpression m)
     {
-        if (m.Method.DeclaringType == typeof(Queryable) && m.Method.Name == "Where")
+        if (m.Method.DeclaringType != typeof(Queryable))
+            throw new NotSupportedException($"The method '{m.Method.Name}' is not supported");
+
+        switch (m.Method.Name)
         {
-            sb.Append("SELECT * FROM (");
-            this.Visit(m.Arguments[0]);
-            sb.Append(") AS T WHERE ");
-            LambdaExpression lambda = (LambdaExpression)StripQuotes(m.Arguments[1]);
-            this.Visit(lambda.Body);
-            return m;
+            case "Where":
+                sb.Append("SELECT * FROM (");
+                this.Visit(m.Arguments[0]);
+                sb.Append(") AS T WHERE ");
+                var lambda = (LambdaExpression)StripQuotes(m.Arguments[1]);
+                this.Visit(lambda.Body);
+                return m;
+            case "Take":
+                sb.Append("SELECT TOP ");
+                var value = (ConstantExpression)(m.Arguments[1]);
+                this.VisitTopConstant(value);
+                sb.Append(" * FROM (");
+                this.Visit(m.Arguments[0]);
+                sb.Append(") AS U");
+                return m;
         }
 
-        throw new NotSupportedException(string.Format("The method '{0}' is not supported", m.Method.Name));
+        throw new NotSupportedException($"The method '{m.Method.Name}' is not supported");
     }
 
     protected override Expression VisitUnary(UnaryExpression u)
@@ -92,6 +105,20 @@ internal class QueryTranslator : ExpressionVisitor
         this.Visit(b.Right);
         sb.Append(")");
         return b;
+    }
+
+    protected Expression VisitTopConstant(ConstantExpression c)
+    {
+        switch (Type.GetTypeCode(c.Value.GetType()))
+        {
+            case TypeCode.Int32:
+                sb.Append((int)c.Value);
+                break;
+            default:
+                throw new InvalidCastException("Not a valid integer");
+        }
+
+        return c;
     }
 
     protected override Expression VisitConstant(ConstantExpression c)

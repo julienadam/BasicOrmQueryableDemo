@@ -6,7 +6,7 @@ using (var connection = new SqlConnection(constr))
 {
     connection.Open();
     var db = new Northwind(connection);
-    var query = db.Customers.Where(c => c.City == "London");
+    var query = db.Customers.Where(c => c.City == "London").Take(2);
     Console.WriteLine("Query:\n{0}\n", query);
     var list = query.ToList();
     foreach (var item in list)
