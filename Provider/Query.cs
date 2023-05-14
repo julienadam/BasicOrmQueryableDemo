@@ -29,10 +29,7 @@ public class Query<T> : IQueryable<T>, IQueryable, IEnumerable<T>, IEnumerable, 
         this.expression = expression;
     }
 
-    Expression IQueryable.Expression
-    {
-        get { return this.expression; }
-    }
+    Expression IQueryable.Expression => this.expression;
 
     Type IQueryable.ElementType => typeof(T);
 

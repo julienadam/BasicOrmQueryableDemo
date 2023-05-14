@@ -1,4 +1,7 @@
 ﻿using System.Data.Common;
+using BasicOrmQueryableDemo.Provider;
+
+namespace BasicOrmQueryableDemo.Domain;
 
 public class Northwind
 {

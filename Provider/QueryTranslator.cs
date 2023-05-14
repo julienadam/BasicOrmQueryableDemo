@@ -2,18 +2,29 @@
 using System.Text;
 // You can define other methods, fields, classes and namespaces here
 
+internal class QueryState
+{
+    public string From { get; set; } = "";
+    public int? Top { get; set; } = null;
+    public StringBuilder Where { get; } = new StringBuilder();
+
+    public string BuildQuery()
+    {
+        var topClause = Top == null ? string.Empty : $"TOP {Top}";
+        return $"SELECT {topClause} *  FROM {From} WHERE {Where}";
+    }
+}
+
 internal class QueryTranslator : ExpressionVisitor
 {
-    private StringBuilder sb;
-    private int? top = null;
+    private readonly QueryState state = new QueryState();
 
     internal QueryTranslator() { }
 
     internal string Translate(Expression expression)
     {
-        this.sb = new StringBuilder();
         this.Visit(expression);
-        return this.sb.ToString();
+        return state.BuildQuery();
     }
 
     private static Expression StripQuotes(Expression e)
@@ -34,19 +45,14 @@ internal class QueryTranslator : ExpressionVisitor
         switch (m.Method.Name)
         {
             case "Where":
-                sb.Append("SELECT * FROM (");
                 this.Visit(m.Arguments[0]);
-                sb.Append(") AS T WHERE ");
                 var lambda = (LambdaExpression)StripQuotes(m.Arguments[1]);
                 this.Visit(lambda.Body);
                 return m;
             case "Take":
-                sb.Append("SELECT TOP ");
                 var value = (ConstantExpression)(m.Arguments[1]);
                 this.VisitTopConstant(value);
-                sb.Append(" * FROM (");
                 this.Visit(m.Arguments[0]);
-                sb.Append(") AS U");
                 return m;
         }
 
@@ -58,7 +64,7 @@ internal class QueryTranslator : ExpressionVisitor
         switch (u.NodeType)
         {
             case ExpressionType.Not:
-                sb.Append(" NOT ");
+                state.Where.Append(" NOT ");
                 this.Visit(u.Operand);
                 break;
             default:
@@ -70,40 +76,43 @@ internal class QueryTranslator : ExpressionVisitor
 
     protected override Expression VisitBinary(BinaryExpression b)
     {
-        sb.Append("(");
+        state.Where.Append("(");
         this.Visit(b.Left);
         switch (b.NodeType)
         {
             case ExpressionType.And:
-                sb.Append(" AND ");
+                state.Where.Append(" AND ");
+                break;
+            case ExpressionType.AndAlso:
+                state.Where.Append(" AND ");
                 break;
             case ExpressionType.Or:
-                sb.Append(" OR");
+                state.Where.Append(" OR");
                 break;
             case ExpressionType.Equal:
-                sb.Append(" = ");
+                state.Where.Append(" = ");
                 break;
             case ExpressionType.NotEqual:
-                sb.Append(" <> ");
+                state.Where.Append(" <> ");
                 break;
             case ExpressionType.LessThan:
-                sb.Append(" < ");
+                state.Where.Append(" < ");
                 break;
             case ExpressionType.LessThanOrEqual:
-                sb.Append(" <= ");
+                state.Where.Append(" <= ");
                 break;
             case ExpressionType.GreaterThan:
-                sb.Append(" > ");
+                state.Where.Append(" > ");
                 break;
             case ExpressionType.GreaterThanOrEqual:
-                sb.Append(" >= ");
+                state.Where.Append(" >= ");
                 break;
             default:
-                throw new NotSupportedException(string.Format("The binary operator '{0}' is not supported", b.NodeType));
+                throw new NotSupportedException($"The binary operator '{b.NodeType}' is not supported");
         }
 
         this.Visit(b.Right);
-        sb.Append(")");
+        state.Where.Append(")");
         return b;
     }
 
@@ -112,7 +121,7 @@ internal class QueryTranslator : ExpressionVisitor
         switch (Type.GetTypeCode(c.Value.GetType()))
         {
             case TypeCode.Int32:
-                sb.Append((int)c.Value);
+                state.Top = (int)c.Value;
                 break;
             default:
                 throw new InvalidCastException("Not a valid integer");
@@ -125,30 +134,29 @@ internal class QueryTranslator : ExpressionVisitor
     {
         if (c.Value == null)
         {
-            sb.Append("NULL");
+            state.Where.Append("NULL");
         }
         else if (c.Value is IQueryable q)
         {
             // assume constant nodes w/ IQueryables are table references
-            sb.Append("SELECT * FROM ");
-            sb.Append(q.ElementType.Name);
+            state.From = q.ElementType.Name;
         }
         else
         {
             switch (Type.GetTypeCode(c.Value.GetType()))
             {
                 case TypeCode.Boolean:
-                    sb.Append(((bool)c.Value) ? 1 : 0);
+                    state.Where.Append(((bool)c.Value) ? 1 : 0);
                     break;
                 case TypeCode.String:
-                    sb.Append("'");
-                    sb.Append(c.Value);
-                    sb.Append("'");
+                    state.Where.Append("'");
+                    state.Where.Append(c.Value);
+                    state.Where.Append("'");
                     break;
                 case TypeCode.Object:
-                    throw new NotSupportedException(string.Format("The constant for '{0}' is not supported", c.Value));
+                    throw new NotSupportedException($"The constant for '{c.Value}' is not supported");
                 default:
-                    sb.Append(c.Value);
+                    state.Where.Append(c.Value);
                     break;
             }
         }
@@ -157,12 +165,10 @@ internal class QueryTranslator : ExpressionVisitor
 
     protected override Expression VisitMember(MemberExpression m)
     {
-        if (m.Expression != null && m.Expression.NodeType == ExpressionType.Parameter)
-        {
-            sb.Append(m.Member.Name);
-            return m;
-        }
+        if (m.Expression is not { NodeType: ExpressionType.Parameter })
+            throw new NotSupportedException($"The member '{m.Member.Name}' is not supported");
 
-        throw new NotSupportedException(string.Format("The member '{0}' is not supported", m.Member.Name));
+        state.Where.Append(m.Member.Name);
+        return m;
     }
 }

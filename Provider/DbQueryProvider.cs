@@ -2,6 +2,8 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
+namespace BasicOrmQueryableDemo.Provider;
+
 public class DbQueryProvider : QueryProvider
 {
     private readonly DbConnection connection;
@@ -18,7 +20,7 @@ public class DbQueryProvider : QueryProvider
 
     public override object? Execute(Expression expression)
     {
-        DbCommand cmd = this.connection.CreateCommand();
+        var cmd = this.connection.CreateCommand();
         cmd.CommandText = this.Translate(expression);
         DbDataReader reader = cmd.ExecuteReader();
         var elementType = TypeSystem.GetElementType(expression.Type);
